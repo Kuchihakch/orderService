@@ -7,70 +7,92 @@ import (
 )
 
 type OrderServiceImpl struct {
-	Repo models.OrderRepository // service depedence ke repo
+	OrderRepo   models.OrderRepository // service depedence ke OrderRepo, productRepo
+	ProductRepo models.ProductRepository
 }
 
 func (r *OrderServiceImpl) CreateOrder(order models.Order) error {
-	if order.ID == "" || order.Amount <= 0 || order.UserID == "" {
+	if order.ID == "" || order.Amount <= 0 || order.UserID == "" || order.ProductID == "" {
 		return errors.New("Invalid Order Payload")
 	}
-	_, err := r.Repo.GetByID(order.ID)
+	_, err := r.OrderRepo.GetByID(order.ID)
 	if err == nil {
 		return errors.New("Order ID Already Exist")
 	}
+
+	//cek produk
+	_, errProduct := r.ProductRepo.GetByID(order.ProductID)
+	if errProduct != nil {
+		return errProduct
+	}
+
+	//update stock nanti ketika udah PAID + validasi stok
+
 	order.Status = "NEW"
 	now := time.Now()
 	y, m, d := now.Date()
 	order.CreatedAt = time.Date(y, m, d, 0, 0, 0, 0, now.Location())
-	return r.Repo.Create(order)
+	return r.OrderRepo.Create(order)
 }
 
 func (r *OrderServiceImpl) PayOrder(id string) error {
 	if id == "" {
 		return errors.New("ID Required")
 	}
-	d, err := r.Repo.GetByID(id)
+	d, err := r.OrderRepo.GetByID(id)
 	if err != nil {
 		return err
 	}
 	if d.Status == "PAID" {
 		return errors.New("Cannot Update Status Successful Transaction")
 	}
-	return r.Repo.UpdateStatus(id, "PAID")
+	p, errProduct := r.ProductRepo.GetByID(d.ProductID)
+	if errProduct != nil {
+		return errProduct
+	}
+	if p.Stock < d.Amount {
+		return errors.New("Not Enough Product Stock")
+	}
+	newStock := p.Stock - d.Amount
+	errUpdate := r.ProductRepo.UpdateStock(p.ID, newStock)
+	if errUpdate != nil {
+		return errUpdate
+	}
+	return r.OrderRepo.UpdateStatus(id, "PAID")
 }
 
 func (r *OrderServiceImpl) CancelOrder(id string) error {
 	if id == "" {
 		return errors.New("ID Required")
 	}
-	d, err := r.Repo.GetByID(id)
+	d, err := r.OrderRepo.GetByID(id)
 	if err != nil {
 		return err
 	}
 	if d.Status == "PAID" {
 		return errors.New("Cannot Update Status Successful Transaction")
 	}
-	return r.Repo.UpdateStatus(id, "CANCELLED")
+	return r.OrderRepo.UpdateStatus(id, "CANCELLED")
 }
 
 func (r *OrderServiceImpl) FindAll() []models.Order {
-	return r.Repo.GetAll()
+	return r.OrderRepo.GetAll()
 }
 
 func (r *OrderServiceImpl) FindById(id string) (models.Order, error) {
 	if id == "" {
 		return models.Order{}, errors.New("ID Required")
 	}
-	return r.Repo.GetByID(id)
+	return r.OrderRepo.GetByID(id)
 }
 
 func (r *OrderServiceImpl) FindByUserID(userId string) []models.Order {
-	return r.Repo.GetByUserID(userId)
+	return r.OrderRepo.GetByUserID(userId)
 }
 
 func (r *OrderServiceImpl) DeleteOrder(id string) error {
 	if id == "" {
 		return errors.New("ID Required")
 	}
-	return r.Repo.Delete(id)
+	return r.OrderRepo.Delete(id)
 }
