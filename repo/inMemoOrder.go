@@ -16,6 +16,9 @@ func NewRepository() *InMemoryOrder {
 }
 
 func (o *InMemoryOrder) Create(order models.Order) error {
+	if _, exist := o.data[order.ID]; exist {
+		return errors.New("Product ID Already Exist")
+	}
 	o.data[order.ID] = &order
 	return nil
 }
